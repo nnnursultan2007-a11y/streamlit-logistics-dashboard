@@ -10,6 +10,7 @@ from main import (
     by_wh,
     build_queue_tree,
     filter_orders,
+    get_city_name,
     get_order_ids,
     get_warehouse_city,
     routes,
@@ -168,27 +169,71 @@ elif page == "Көліктер":
     st.bar_chart(vdf.groupby("Модель").size().rename("Көлік саны"), color="#397f83")
 
 else:
-    st.subheader("Lambda, closure және recursion")
-    st.caption("Бұл көрсетілім бастапқы main.py функцияларын тікелей шақырады.")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### Lambda және reduce")
-        st.metric("total_weight(orders)", f"{total_weight(orders):,} кг")
-        ids = get_order_ids(orders)
-        st.write(f"`get_order_ids(orders)` → {len(ids)} ID")
-        st.code(f"Алғашқы ID: {ids[:8]} … Соңғы ID: {ids[-3:]}", language="python")
-    with col2:
-        st.markdown("#### Closure сүзгілері")
-        ready_rows = filter_orders(orders, by_status("ready"))
-        weight_rows = filter_orders(orders, by_weight_range(500, 800))
-        warehouse_rows = filter_orders(orders, by_wh(1))
-        st.write(f"`by_status('ready')` → **{len(ready_rows)}** тапсырыс")
-        st.write(f"`by_weight_range(500, 800)` → **{len(weight_rows)}** тапсырыс")
-        st.write(f"`by_wh(1)` → **{len(warehouse_rows)}** тапсырыс · {get_warehouse_city(1)}")
-    st.markdown("#### Recursion")
-    route_values = traverse_routes(routes)
-    queue_values = build_queue_tree(orders, 2)
-    x, y = st.columns(2)
-    x.metric("traverse_routes(routes)", f"{len(route_values)} қадам")
-    y.metric("build_queue_tree(orders, 2)", f"{len(queue_values)} тапсырыс")
-    st.dataframe(order_frame(queue_values), use_container_width=True, hide_index=True)
+    st.subheader("Функцияларды байқап көру")
+    st.caption("Төмендегі бөлімдер жүктеген main.py файлындағы функцияларды тікелей іске қосады.")
+
+    lambda_tab, closure_tab, recursion_tab, city_tab = st.tabs(
+        ["Lambda және reduce", "Closure және сүзгі", "Рекурсия", "Қаланы іздеу"]
+    )
+
+    with lambda_tab:
+        weight_col, id_col = st.columns(2)
+        weight_col.metric("total_weight(orders)", f"{total_weight(orders):,} кг")
+        order_ids = get_order_ids(orders)
+        id_col.metric("get_order_ids(orders)", f"{len(order_ids)} ID")
+        st.code(f"ID тізімі: {order_ids}", language="python")
+        st.caption("Lambda map арқылы салмақ пен ID алады, ал reduce жалпы салмақты қосады.")
+
+    with closure_tab:
+        status_labels = {"Жаңа": "new", "Дайын": "ready", "Өңделуде": "processing"}
+        status_col, wh_col = st.columns(2)
+        chosen_status_label = status_col.selectbox("Күй бойынша (by_status)", list(status_labels))
+        chosen_wh = wh_col.selectbox(
+            "Қойма бойынша (by_wh)", warehouses,
+            format_func=lambda w: f"№{w[0]} · {w[1]}",
+        )
+        weight_col, max_col = st.columns(2)
+        min_weight = weight_col.number_input("Ең аз салмақ (кг)", min_value=0, max_value=5000, value=500, step=50)
+        max_weight = max_col.number_input("Ең көп салмақ (кг)", min_value=0, max_value=5000, value=800, step=50)
+        if min_weight > max_weight:
+            st.warning("Ең аз салмақ ең көп салмақтан үлкен болмауы керек.")
+            filtered = ()
+        else:
+            filtered = filter_orders(orders, by_status(status_labels[chosen_status_label]))
+            filtered = filter_orders(filtered, by_weight_range(min_weight, max_weight))
+            filtered = filter_orders(filtered, by_wh(chosen_wh[0]))
+        st.caption(
+            f"filter_orders + үш closure нәтижесі: {len(filtered)} тапсырыс · "
+            f"{sum(order[2] for order in filtered):,} кг"
+        )
+        st.dataframe(order_frame(filtered), use_container_width=True, hide_index=True)
+        st.code("by_status(status) · by_weight_range(lo, hi) · by_wh(wh_id) · filter_orders(orders, predicate)", language="python")
+
+    with recursion_tab:
+        route_count = len(traverse_routes(routes))
+        st.metric("traverse_routes(routes)", f"{route_count} маршрут")
+        for index, route in enumerate(traverse_routes(routes), start=1):
+            st.write(f"**{index:02}.** {route}")
+        st.markdown("---")
+        queue_wh = st.selectbox(
+            "Кезекті құратын қойма (build_queue_tree)", warehouses,
+            format_func=lambda w: f"№{w[0]} · {w[1]}", key="queue_warehouse",
+        )
+        queue = build_queue_tree(orders, queue_wh[0])
+        st.caption(f"Қайтарылған кезек: {len(queue)} тапсырыс · {get_warehouse_city(queue_wh[0])}")
+        st.dataframe(order_frame(queue), use_container_width=True, hide_index=True)
+
+    with city_tab:
+        city_col, warehouse_col = st.columns(2)
+        selected_city = city_col.selectbox(
+            "Қала ID-ін таңдаңыз (get_city_name)", cities,
+            format_func=lambda city: f"№{city[0]} · {city[1]} ({city[2]})",
+        )
+        city_col.success(f"get_city_name({selected_city[0]}) → {get_city_name(selected_city[0])}")
+        selected_city_wh = warehouse_col.selectbox(
+            "Қойманы таңдаңыз (get_warehouse_city)", warehouses,
+            format_func=lambda w: f"№{w[0]} · {w[1]}", key="city_warehouse",
+        )
+        warehouse_col.success(
+            f"get_warehouse_city({selected_city_wh[0]}) → {get_warehouse_city(selected_city_wh[0])}"
+        )
