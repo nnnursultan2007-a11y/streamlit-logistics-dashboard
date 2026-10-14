@@ -1,37 +1,29 @@
-# Qamqor Logistics — Streamlit dashboard
+# Qamqor Logistics · Streamlit
 
-Бұл жоба бастапқы зертханалық жұмыстың `lambda`, closure және recursion логикасын сақтайды. Интерфейс сол `main.py`, `cities.py`, `warehouses.py`, `orders.py` және `vehicles.py` модульдерінен дерек алады.
+Зертханалық №1–4 функцияларын Streamlit интерфейсінде көрсететін логистика dashboard-ы. `main.py` мен `containers.py` бастапқы функциялар мен Maybe/Either контейнерлерін сақтайды.
 
-## Іске қосу
+## Компьютерде іске қосу
 
-Барлық файлды бір папкада сақтап, сол папканы терминалда ашыңыз. Windows PowerShell:
+PowerShell-ді осы файлдар тұрған папкадан ашып, командаларды бір-бірлеп орындаңыз:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
+py -m pip install -r requirements.txt
+py -m streamlit run app.py
 ```
 
-Streamlit берген жергілікті мекенжай браузерде ашылады. Келесі жолы виртуалды ортаны іске қосқаннан кейін мына команда жеткілікті:
+## Streamlit Community Cloud-қа шығару
 
-```powershell
-python -m streamlit run app.py
-```
+`share.streamlit.io` сайтынан **Create app** басып, GitHub репозиторийін таңдаңыз. Branch — `main`, негізгі файл — `app.py`. Deploy басқан соң сайт сілтемесі беріледі. GitHub-тағы код өзгерсе, Cloud қолданбасы сол өзгерістерді жаңартады.
 
-Linux немесе macOS жүйесінде виртуалды ортаны белсендіру командасы:
+## Dashboard бөлімдері
 
-```bash
-source .venv/bin/activate
-```
+- Шолу, тапсырыстарды сүзу, қойма кезектері, маршруттар және көліктер.
+- Маршрутты толық перебормен немесе 8-ден көп тапсырысқа жақын көрші әдісімен есептеу; кэш уақытын көрсету.
+- Functional Core: Maybe/Either арқылы тапсырысты табу, ережемен тексеру, қойма кезегін құру және маршрут жоспарын есептеу.
+- Maybe / Either әдістерін мысалдармен интерактивті көрсету.
 
-## Бөлімдер
+## Файлдар
 
-- **Шолу:** тапсырыс саны мен жалпы салмақ, дайын тапсырыстар, қойма жүктемесі.
-- **Тапсырыстар:** күй, қойма және салмақ бойынша сүзгі.
-- **Қоймалар:** таңдалған қоймадағы тапсырыстардың рекурсивті кезегі.
-- **Маршруттар:** бастапқы маршруттардың рекурсивті өтуі.
-- **Көліктер:** парк пен қолжетімді жүк сыйымдылығы.
-- **Алгоритмдер:** бастапқы `main.py` ішіндегі барлық функцияны интерактивті түрде байқап көру: lambda/reduce, closure сүзгілері, `filter_orders`, рекурсивті маршрут/кезек және қаланы іздеу.
-
-`main.py` командалық жолдан да бұрынғыдай орындала береді: `python main.py`.
+`app.py`, `main.py`, `containers.py`, `cities.py`, `warehouses.py`, `orders.py`, `vehicles.py`, `test_main.py`, `requirements.txt`.
