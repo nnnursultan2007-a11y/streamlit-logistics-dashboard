@@ -19,7 +19,6 @@ from main import (
     error_kind,
     filter_orders,
     format_error,
-    get_city_id_for_order,
     get_city_name,
     get_city_id_for_order,
     get_order,
