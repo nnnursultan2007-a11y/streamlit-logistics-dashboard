@@ -1,7 +1,7 @@
 from functools import reduce, lru_cache
 from itertools import permutations
 from time import perf_counter
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Iterable, Iterator
 
 from containers import Maybe, Just, Nothing, Either, Left, Right
 from cities import cities
@@ -587,6 +587,238 @@ def describe_result(result: Either) -> str:
     )
 
 
+
+
+# =========================
+# ЛАБОРАТОРНАЯ №5 — ЛЕНИВЫЕ ВЫЧИСЛЕНИЯ
+# =========================
+
+def iter_orders(orders: tuple[Order, ...], pred) -> Iterable[Order]:
+    """Возвращает только подходящие заказы по одному, без создания списка."""
+    for order in orders:
+        if pred(order):
+            yield order
+
+
+def lazy_assign(orders: Iterable[Order],
+                vehicles: tuple) -> Iterator[tuple[str, str]]:
+    """
+    Лениво назначает каждому заказу отдельную свободную машину.
+    Результат: (order_id, vehicle_id).
+    """
+    used_vehicles = set()
+
+    for order in orders:
+        order_id = str(order[0])
+        weight = order[2]
+
+        for vehicle in vehicles:
+            vehicle_id, model, capacity, available = vehicle
+
+            if available and vehicle_id not in used_vehicles and capacity >= weight:
+                used_vehicles.add(vehicle_id)
+                yield (order_id, str(vehicle_id))
+                break
+
+
+def show_lazy_pipeline():
+    """Pipelines → Lazy Evaluation."""
+    print()
+    print("----- Pipelines · Lazy Evaluation -----")
+
+    # Фильтр тоже ленивый: заказы выдаются только при запросе.
+    ready = iter_orders(orders, lambda order: order[3] in ("new", "ready"))
+    assignments = lazy_assign(ready, vehicles)
+
+    print("Поток заказов → назначение машин:")
+    count = 0
+    for order_id, vehicle_id in assignments:
+        print(f"Заказ №{order_id} -> машина №{vehicle_id}")
+        count += 1
+        if count == 5:
+            break
+
+    print("Показаны первые", count, "назначений.")
+    print("Остальные заказы не обрабатывались.")
+
+
+# =========================
+# ЛАБОРАТОРНАЯ №6 — FRP / СОБЫТИЯ
+# =========================
+
+class Event(NamedTuple):
+    name: str
+    ts: str
+    payload: dict
+
+
+class EventBus:
+    """Простая шина: событие передаётся всем его подписчикам."""
+
+    def __init__(self):
+        self.handlers = {}
+        self.views = {
+            "queue": [],
+            "routes": [],
+            "delivered": []
+        }
+
+    def subscribe(self, name: str, handler: Callable[[Event, dict], dict]):
+        if name not in self.handlers:
+            self.handlers[name] = []
+        self.handlers[name].append(handler)
+
+    def publish(self, name: str, payload: dict):
+        from datetime import datetime
+
+        event = Event(name, datetime.now().isoformat(timespec="seconds"), payload)
+
+        for handler in self.handlers.get(name, []):
+            self.views = handler(event, self.views)
+
+        return event
+
+
+def queue_added_view(event: Event, views: dict) -> dict:
+    """Обработчик ORDER_ADDED — обновляет очередь заказов."""
+    new_views = dict(views)
+    new_views["queue"] = views["queue"] + [event.payload]
+    return new_views
+
+
+def queue_updated_view(event: Event, views: dict) -> dict:
+    """Обработчик QUEUE_UPDATED — заменяет содержимое очереди."""
+    new_views = dict(views)
+    new_views["queue"] = list(event.payload.get("orders", []))
+    return new_views
+
+
+def route_planned_view(event: Event, views: dict) -> dict:
+    """Обработчик ROUTE_PLANNED — добавляет маршрут в работу."""
+    new_views = dict(views)
+    new_views["routes"] = views["routes"] + [event.payload]
+    return new_views
+
+
+def delivered_view(event: Event, views: dict) -> dict:
+    """Обработчик DELIVERED — добавляет доставленный груз."""
+    new_views = dict(views)
+    new_views["delivered"] = views["delivered"] + [event.payload]
+    return new_views
+
+
+def create_event_bus() -> EventBus:
+    """Создаёт шину и подключает обработчики-витрины."""
+    bus = EventBus()
+    bus.subscribe("ORDER_ADDED", queue_added_view)
+    bus.subscribe("QUEUE_UPDATED", queue_updated_view)
+    bus.subscribe("ROUTE_PLANNED", route_planned_view)
+    bus.subscribe("DELIVERED", delivered_view)
+    return bus
+
+
+def show_event_panels(bus: EventBus):
+    """Показывает три витрины: очередь, маршруты и доставленные грузы."""
+    print()
+    print("========== ASYNC / FRP · ПАНЕЛИ ==========")
+    print("Очередь заказов:")
+    for item in bus.views["queue"]:
+        print(" -", item)
+    print("Маршруты в работе:")
+    for item in bus.views["routes"]:
+        print(" -", item)
+    print("Доставленные грузы:")
+    for item in bus.views["delivered"]:
+        print(" -", item)
+    print("==========================================")
+
+
+def async_frp_menu():
+    """Меню событий. Каждый пункт публикует событие в EventBus."""
+    bus = create_event_bus()
+
+    while True:
+        print()
+        print("----- Async/FRP -----")
+        print("1. ORDER_ADDED — добавить заказ")
+        print("2. QUEUE_UPDATED — обновить очередь")
+        print("3. ROUTE_PLANNED — запланировать маршрут")
+        print("4. DELIVERED — отметить доставку")
+        print("5. Показать панели")
+        print("0. Назад")
+
+        choice = input("Выберите событие: ")
+
+        if choice == "1":
+            order_id = input("ID заказа: ")
+            bus.publish("ORDER_ADDED", {"order_id": order_id, "status": "new"})
+            print("Событие ORDER_ADDED опубликовано.")
+        elif choice == "2":
+            order_ids = input("ID заказов через запятую: ")
+            order_list = [x.strip() for x in order_ids.split(",") if x.strip()]
+            bus.publish("QUEUE_UPDATED", {"orders": order_list})
+            print("Событие QUEUE_UPDATED опубликовано.")
+        elif choice == "3":
+            route_id = input("ID маршрута: ")
+            vehicle_id = input("ID машины: ")
+            bus.publish("ROUTE_PLANNED", {
+                "route_id": route_id,
+                "vehicle_id": vehicle_id,
+                "status": "in_progress"
+            })
+            print("Событие ROUTE_PLANNED опубликовано.")
+        elif choice == "4":
+            order_id = input("ID доставленного заказа: ")
+            bus.publish("DELIVERED", {"order_id": order_id, "status": "delivered"})
+            print("Событие DELIVERED опубликовано.")
+        elif choice == "5":
+            show_event_panels(bus)
+        elif choice == "0":
+            break
+        else:
+            print("Неверный выбор.")
+
+
+def pipelines_menu():
+    while True:
+        print()
+        print("----- Pipelines -----")
+        print("1. Lazy Evaluation — поток заказов")
+        print("0. Назад")
+        choice = input("Выберите: ")
+
+        if choice == "1":
+            show_lazy_pipeline()
+        elif choice == "0":
+            break
+        else:
+            print("Неверный выбор.")
+
+
+def main_menu():
+    while True:
+        print()
+        print("========== CIS LOGISTICS ==========")
+        print("1. Pipelines")
+        print("2. Reports")
+        print("3. Async/FRP")
+        print("0. Выход")
+        choice = input("Выберите раздел: ")
+
+        if choice == "1":
+            pipelines_menu()
+        elif choice == "2":
+            reports_menu()
+        elif choice == "3":
+            async_frp_menu()
+        elif choice == "0":
+            print("Выход из программы.")
+            break
+        else:
+            print("Неверный выбор.")
+
+
+
 # UI / REPORTS: Functional Core
 def show_pipeline_report(order_id=None):
     """Reports → Functional Core: пайплайн для одного заказа."""
@@ -737,4 +969,4 @@ if __name__ == "__main__":
             "| Статус:", order[3]
         )
 
-    reports_menu()
+    main_menu()
