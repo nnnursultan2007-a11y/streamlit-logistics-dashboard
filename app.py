@@ -353,3 +353,40 @@ elif page == "Maybe / Either":
         st.write(f"Right: is_right={demo_right.is_right()}, is_left={demo_right.is_left()}, bind={demo_right.bind(lambda n: Right(n * 2))}")
         st.write(f"Right.fold(...) → `{demo_right.fold(lambda error: 'Қате', lambda value: value)}` · Left.to_maybe() → `{demo_left.to_maybe()}`")
 
+
+
+# Дополнительные разделы лабораторных №5–6
+from main import iter_orders, lazy_assign, Event, EventBus, create_event_bus
+
+
+# Блоки №5–6 — ленивые вычисления и события FRP
+with st.sidebar.expander("Лабораторные №5–6"):
+    extra_page = st.radio("Дополнительные разделы", ["Lazy Evaluation", "Async / FRP"], key="extra_page")
+if "extra_page" in locals():
+    if extra_page == "Lazy Evaluation":
+        st.title("⚡ Lazy Evaluation")
+        st.caption("Генератор обрабатывает заказы по одному и не создаёт заранее полный список.")
+        lazy_status = st.selectbox("Күйі", ["Барлығы", "new", "ready", "processing"], key="lazy_status")
+        predicate = (lambda order: True) if lazy_status == "Барлығы" else by_status(lazy_status)
+        stream = iter_orders(orders, predicate)
+        preview = []
+        for index, order in enumerate(stream):
+            if index >= 5:
+                break
+            preview.append(order)
+        st.metric("Алғашқы көрсетілген тапсырыстар", len(preview))
+        st.dataframe(order_frame(tuple(preview)), use_container_width=True, hide_index=True)
+        assignments = list(lazy_assign(iter_orders(orders, predicate), vehicles))
+        st.subheader("Көлікті ағынмен тағайындау")
+        st.dataframe(pd.DataFrame(assignments, columns=["Тапсырыс №", "Көлік №"]), use_container_width=True, hide_index=True)
+        st.info("iter_orders() және lazy_assign() генераторлары бастапқы main.py логикасымен орындалды.")
+    else:
+        st.title("🔔 Async / FRP · Event Bus")
+        st.caption("Оқиғалар жарияланып, қойма кезегі мен жеткізу панельдерінің күйін өзгертеді.")
+        demo_bus = create_event_bus()
+        event_kind = st.selectbox("Оқиға түрі", ["ORDER_ADDED", "QUEUE_UPDATED", "ROUTE_PLANNED", "DELIVERED"], key="frp_event")
+        event_order = st.number_input("Тапсырыс ID", min_value=1, max_value=9999, value=1, key="frp_order")
+        if st.button("Оқиғаны жариялау", key="publish_event"):
+            event = demo_bus.publish(event_kind, {"order_id": int(event_order)})
+            st.success(f"{event.name} оқиғасы жарияланды: {event.payload}")
+        st.write("EventBus — оқиғаларға жазылған өңдеушілерді шақыру механизмі.")
