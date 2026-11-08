@@ -437,3 +437,85 @@ def test_parse_int_and_describe():
     ok = process_order(1, orders, warehouses, vehicles, RULES)
     assert describe_result(ok).startswith("OK")
     assert describe_result(Left("x")).startswith("ОШИБКА")
+
+
+# =========================
+# ТЕСТЫ ЛАБОРАТОРНОЙ №5 — LAZY EVALUATION
+# =========================
+
+from main import iter_orders, lazy_assign
+
+def test_iter_orders_filters_lazily():
+    source = ((1, 1, 100, "new"), (2, 1, 200, "ready"), (3, 1, 300, "done"))
+    result = iter_orders(source, lambda order: order[3] == "new")
+    assert iter(result) is result
+    assert list(result) == [(1, 1, 100, "new")]
+
+
+def test_iter_orders_returns_generator_not_list():
+    result = iter_orders(orders, lambda order: True)
+    assert not isinstance(result, list)
+    assert next(iter(result)) == orders[0]
+
+
+def test_lazy_assign_assigns_matching_vehicle():
+    order_stream = iter_orders(((101, 1, 500, "new"),), lambda order: True)
+    result = list(lazy_assign(order_stream, vehicles))
+    assert result == [("101", "1")]
+
+
+def test_lazy_assign_does_not_reuse_vehicle():
+    cars = ((1, "Small", 600, True), (2, "Big", 1200, True))
+    stream = ((1, 1, 500, "new"), (2, 1, 500, "new"))
+    assert list(lazy_assign(stream, cars)) == [("1", "1"), ("2", "2")]
+
+
+def test_lazy_assign_skips_unavailable_and_too_small():
+    cars = ((1, "Unavailable", 1000, False), (2, "Small", 100, True))
+    stream = ((1, 1, 500, "new"),)
+    assert list(lazy_assign(stream, cars)) == []
+
+
+# =========================
+# ТЕСТЫ ЛАБОРАТОРНОЙ №6 — EVENT BUS / FRP
+# =========================
+
+from main import (
+    Event, EventBus, create_event_bus,
+    queue_added_view, queue_updated_view,
+    route_planned_view, delivered_view
+)
+
+def test_event_has_required_fields():
+    event = Event("ORDER_ADDED", "2026-01-01T10:00:00", {"order_id": 1})
+    assert event.name == "ORDER_ADDED"
+    assert event.payload["order_id"] == 1
+
+
+def test_event_bus_calls_subscriber():
+    bus = EventBus()
+    called = []
+    bus.subscribe("TEST", lambda event, views: called.append(event.name) or views)
+    bus.publish("TEST", {"value": 1})
+    assert called == ["TEST"]
+
+
+def test_order_added_updates_queue_panel():
+    bus = create_event_bus()
+    bus.publish("ORDER_ADDED", {"order_id": 10, "status": "new"})
+    assert bus.views["queue"] == [{"order_id": 10, "status": "new"}]
+
+
+def test_queue_updated_replaces_queue():
+    bus = create_event_bus()
+    bus.publish("ORDER_ADDED", {"order_id": 1})
+    bus.publish("QUEUE_UPDATED", {"orders": [2, 3]})
+    assert bus.views["queue"] == [2, 3]
+
+
+def test_route_and_delivery_panels_update():
+    bus = create_event_bus()
+    bus.publish("ROUTE_PLANNED", {"route_id": 7, "vehicle_id": 2})
+    bus.publish("DELIVERED", {"order_id": 15})
+    assert bus.views["routes"] == [{"route_id": 7, "vehicle_id": 2}]
+    assert bus.views["delivered"] == [{"order_id": 15}]
