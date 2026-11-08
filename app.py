@@ -7,6 +7,9 @@ from cities import cities
 from containers import Just, Left, Nothing, Right
 from main import (
     allowed_status_rule,
+    create_event_bus,
+    iter_orders,
+    lazy_assign,
     assign_to_queue,
     build_queue_tree,
     by_status,
@@ -117,10 +120,11 @@ page = st.sidebar.radio(
     "Бөлім", [
         "Шолу", "Тапсырыстар", "Қоймалар", "Маршруттар", "Көліктер",
         "Маршрутты есептеу", "Functional Core", "Maybe / Either",
+        "Lazy Evaluation", "Event Bus / FRP",
     ]
 )
 st.sidebar.markdown("---")
-st.sidebar.caption("Зертханалар №1–4 · Python functions")
+st.sidebar.caption("Зертханалар №1–6 · Python functions")
 
 ready_orders = filter_orders(orders, by_status("ready"))
 available_vehicles = [vehicle for vehicle in vehicles if vehicle[3]]
@@ -352,3 +356,106 @@ elif page == "Maybe / Either":
         st.write(f"Left.map_left(str.upper) → `{demo_left.map_left(str.upper)}`")
         st.write(f"Right: is_right={demo_right.is_right()}, is_left={demo_right.is_left()}, bind={demo_right.bind(lambda n: Right(n * 2))}")
         st.write(f"Right.fold(...) → `{demo_right.fold(lambda error: 'Қате', lambda value: value)}` · Left.to_maybe() → `{demo_left.to_maybe()}`")
+
+elif page == "Lazy Evaluation":
+    st.subheader("Lazy Evaluation · Ленивые вычисления")
+    st.caption("Тапсырыстар генератор арқылы бір-бірден тексеріледі. Көлік тек сұралған нәтиже қажет болғанда тағайындалады.")
+    statuses = st.multiselect(
+        "Қарастырылатын тапсырыс күйлері",
+        ["new", "ready", "processing"],
+        default=["new", "ready"],
+        key="lazy_statuses",
+    )
+    limit = st.slider("Көрсетілетін алғашқы тағайындаулар", 1, 10, 5)
+    order_stream = iter_orders(orders, lambda order: order[3] in statuses)
+    assignment_stream = lazy_assign(order_stream, vehicles)
+
+    # Генератордан тек пайдаланушы сұраған көлем ғана алынады.
+    visible_assignments = []
+    for order_id, vehicle_id in assignment_stream:
+        visible_assignments.append({"Тапсырыс №": order_id, "Көлік №": vehicle_id})
+        if len(visible_assignments) >= limit:
+            break
+
+    a, b = st.columns(2)
+    a.metric("Көрсетілген тағайындаулар", len(visible_assignments))
+    b.metric("Сүзілген бастапқы тапсырыстар", sum(1 for o in orders if o[3] in statuses))
+    if visible_assignments:
+        st.dataframe(pd.DataFrame(visible_assignments), use_container_width=True, hide_index=True)
+    else:
+        st.info("Таңдалған күйлерге сәйкес бос көлікпен тағайындалатын тапсырыс табылмады.")
+    st.success("Lazy Evaluation жұмыс істеді: генератор тек көрсетілген нәтижелер санына дейін сұралды.")
+    st.caption("Негізгі функциялар: iter_orders(orders, pred) және lazy_assign(orders, vehicles).")
+
+elif page == "Event Bus / FRP":
+    st.subheader("Event Bus / FRP · Оқиғалар арқылы панельдерді жаңарту")
+    st.caption("EventBus оқиғаны жариялайды, ал жазылған handler функциялары кезек, маршрут және жеткізілген тапсырыс панельдерін жаңартады.")
+    if "lab6_event_bus" not in st.session_state:
+        st.session_state.lab6_event_bus = create_event_bus()
+    bus = st.session_state.lab6_event_bus
+
+    chosen_order = st.selectbox(
+        "Тапсырысты таңдаңыз",
+        orders,
+        format_func=lambda o: f"№{o[0]} · {o[2]} кг · {status_labels.get(o[3], o[3])}",
+        key="lab6_order",
+    )
+    chosen_vehicle = st.selectbox(
+        "Көлікті таңдаңыз",
+        vehicles,
+        format_func=lambda v: f"№{v[0]} · {v[1]} · {v[2]} кг",
+        key="lab6_vehicle",
+    )
+    queue_ids = st.multiselect(
+        "QUEUE_UPDATED оқиғасына арналған тапсырыстар",
+        [o[0] for o in orders],
+        default=[o[0] for o in orders[:3]],
+        key="lab6_queue_ids",
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    if c1.button("ORDER_ADDED", use_container_width=True):
+        event = bus.publish("ORDER_ADDED", {
+            "order_id": chosen_order[0],
+            "warehouse_id": chosen_order[1],
+            "status": chosen_order[3],
+        })
+        st.success(f"{event.name} жарияланды · {event.ts}")
+    if c2.button("QUEUE_UPDATED", use_container_width=True):
+        event = bus.publish("QUEUE_UPDATED", {"orders": queue_ids})
+        st.success(f"{event.name} жарияланды · {event.ts}")
+    if c3.button("ROUTE_PLANNED", use_container_width=True):
+        event = bus.publish("ROUTE_PLANNED", {
+            "order_id": chosen_order[0],
+            "vehicle_id": chosen_vehicle[0],
+        })
+        st.success(f"{event.name} жарияланды · {event.ts}")
+    if c4.button("DELIVERED", use_container_width=True):
+        event = bus.publish("DELIVERED", {"order_id": chosen_order[0]})
+        st.success(f"{event.name} жарияланды · {event.ts}")
+
+    if st.button("Оқиға панельдерін тазарту"):
+        st.session_state.lab6_event_bus = create_event_bus()
+        bus = st.session_state.lab6_event_bus
+        st.info("Панельдер бастапқы күйге қайтарылды.")
+
+    st.markdown("#### Оқиғалардан кейінгі көріністер")
+    q_col, r_col, d_col = st.columns(3)
+    with q_col:
+        st.markdown("**Кезек**")
+        if bus.views["queue"]:
+            st.dataframe(pd.DataFrame(bus.views["queue"]), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Әзірге кезек оқиғасы жоқ.")
+    with r_col:
+        st.markdown("**Жоспарланған маршруттар**")
+        if bus.views["routes"]:
+            st.dataframe(pd.DataFrame(bus.views["routes"]), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Әзірге маршрут оқиғасы жоқ.")
+    with d_col:
+        st.markdown("**Жеткізілген тапсырыстар**")
+        if bus.views["delivered"]:
+            st.dataframe(pd.DataFrame(bus.views["delivered"]), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Әзірге жеткізу оқиғасы жоқ.")
